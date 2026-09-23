@@ -51,9 +51,12 @@ metadata.
 
 ### GUI (recommended)
 
-Run `Bambu filamentimport.bat`. Drag the vendor JSON files (or a whole folder) into the
-window, press **Importera till Bambu Studio**, then start Studio. The presets appear under
+Run `Bambu filament import.bat`. Drag the vendor JSON files (or a whole folder) into the
+window, press **Import to Bambu Studio**, then start Studio. The presets appear under
 the vendor's name in the AMS dropdown (e.g. *addnorth → PETG → Base*).
+
+The window is available in **English and Swedish** – pick the language in the top‑right
+corner (it follows your Windows language the first time and remembers your choice).
 
 To get a desktop shortcut, create one pointing to:
 
@@ -63,7 +66,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File
 
 ### Drag‑and‑drop on a .bat
 
-Drop one or more JSON files onto `Importera filament till Bambu.bat`.
+Drop one or more JSON files onto `Import filament to Bambu.bat`.
 
 ### Command line
 
@@ -76,13 +79,13 @@ Options:
 | Flag | Meaning |
 |------|---------|
 | `-Printer "Bambu Lab X1C 0.4 nozzle"` | Target printer/nozzle. Default: `Bambu Lab P1S 0.4 nozzle`. Use the exact name Studio uses. |
+| `-Lang en` / `-Lang sv` | Language of the messages. Default: follows your Windows language (Swedish → sv, otherwise en). |
 | `-Force` | Overwrite a preset with the same name (a backup is taken first). |
 | `-DryRun` | Show what would be created without writing anything. |
 | `-OutDir <dir>` | Write to a different folder instead of the Studio user folder (for testing). |
 
 ## Notes and caveats
 
-* The UI and log messages are in Swedish.
 * Vendor "process" (print settings) files are not filament profiles and are skipped.
 * To **remove** a preset, delete it inside Studio (*Custom Filaments → trash icon*).
   Deleting the files on disk is not enough – cloud sync may restore them.
@@ -100,7 +103,8 @@ AMS:en, eftersom de saknar rätt `filament_id`. Det här verktyget räknar fram 
 sätt som Studio och skriver presetet direkt till Studios användarmapp.
 
 1. Stäng Bambu Studio.
-2. Starta `Bambu filamentimport.bat`, dra in JSON‑filerna, tryck **Importera**.
+2. Starta `Bambu filament import.bat`, välj *Svenska* uppe till höger, dra in JSON‑filerna,
+   tryck **Importera**.
 3. Starta Studio – filamenten ligger nu under tillverkarens namn i AMS‑dropdownen.
 
 Ta bort presets inifrån Studio, inte genom att radera filer. Standardskrivare är P1S 0.4;

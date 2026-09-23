@@ -1,7 +1,7 @@
 ﻿<#
-  Grafiskt fönster för bambu_filament_import.ps1.
+  Grafiskt fönster för bambu_filament_import.ps1 / GUI for bambu_filament_import.ps1.
   Dra filament-JSON (Bambu-format, t.ex. från Addnorth) till fönstret, tryck "Importera".
-  Startas via "Bambu filamentimport.bat" (eller genvägen på skrivbordet).
+  Språk väljs i fönstret (sparas i %APPDATA%\BambuFilamentImport\lang.txt).
 #>
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -9,20 +9,92 @@ Add-Type -AssemblyName System.Drawing
 
 $scriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Path
 $importScript = Join-Path $scriptDir 'bambu_filament_import.ps1'
+$printer      = 'Bambu Lab P1S 0.4 nozzle'
+$studioExe    = @("$env:ProgramFiles\Bambu Studio\bambu-studio.exe", "${env:ProgramFiles(x86)}\Bambu Studio\bambu-studio.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+# --- Språk / Language ----------------------------------------------------------------------
+$settingsDir  = Join-Path $env:APPDATA 'BambuFilamentImport'
+$langFile     = Join-Path $settingsDir 'lang.txt'
+$Lang = $null
+if (Test-Path $langFile) { $Lang = (Get-Content $langFile -Raw).Trim() }
+if ($Lang -notin 'sv', 'en') { $Lang = if ((Get-Culture).TwoLetterISOLanguageName -eq 'sv') { 'sv' } else { 'en' } }
+
+$Strings = @{
+    sv = @{
+        Title        = 'Bambu filamentimport'
+        Top          = "Dra filament-JSON hit (Bambu-format, t.ex. från Addnorth) – eller använd knappen. Skrivare: $printer"
+        ColFile      = 'Fil'
+        ColPreset    = 'Blir preset'
+        ColTemp      = 'Temp / bädd'
+        ColStatus    = 'Status'
+        DropHint     = 'Släpp filer här'
+        BtnAdd       = 'Lägg till filer…'
+        BtnClear     = 'Rensa listan'
+        ChkForce     = 'Skriv över presets som redan finns'
+        BtnImport    = 'Importera till Bambu Studio'
+        BtnStudio    = 'Starta Bambu Studio'
+        Language     = 'Språk:'
+        Ready        = 'Klar. Bambu Studio måste vara stängt när du importerar.'
+        NoScript     = "Hittar inte bambu_filament_import.ps1 i`n{0}"
+        NotProfile   = 'saknar tillverkare/typ – inte en filamentprofil'
+        Unreadable   = 'kan inte läsas: {0}'
+        StWaiting    = 'väntar'
+        StError      = 'fel'
+        StDone       = 'klar'
+        StExists     = 'finns'
+        StSkipped    = 'hoppad'
+        StudioRuns   = "Bambu Studio körs.`n`nStäng det helt (även i systemfältet) och tryck Importera igen."
+        Importing    = '----- Importerar {0} fil(er) -----'
+        Failed       = 'FEL: {0}'
+        Created      = '{0} preset skapade. Starta Bambu Studio så laddas de upp och syns i AMS-listan.'
+        DlgTitle     = 'Välj filamentprofiler'
+        DlgFilter    = 'Filamentprofil (*.json)|*.json'
+    }
+    en = @{
+        Title        = 'Bambu filament import'
+        Top          = "Drop filament JSON files here (Bambu format, e.g. from addnorth) – or use the button. Printer: $printer"
+        ColFile      = 'File'
+        ColPreset    = 'Becomes preset'
+        ColTemp      = 'Temp / bed'
+        ColStatus    = 'Status'
+        DropHint     = 'Drop files here'
+        BtnAdd       = 'Add files…'
+        BtnClear     = 'Clear list'
+        ChkForce     = 'Overwrite presets that already exist'
+        BtnImport    = 'Import to Bambu Studio'
+        BtnStudio    = 'Start Bambu Studio'
+        Language     = 'Language:'
+        Ready        = 'Ready. Bambu Studio must be closed while importing.'
+        NoScript     = "Cannot find bambu_filament_import.ps1 in`n{0}"
+        NotProfile   = 'missing vendor/type – not a filament profile'
+        Unreadable   = 'cannot be read: {0}'
+        StWaiting    = 'waiting'
+        StError      = 'error'
+        StDone       = 'done'
+        StExists     = 'exists'
+        StSkipped    = 'skipped'
+        StudioRuns   = "Bambu Studio is running.`n`nClose it completely (also in the system tray) and press Import again."
+        Importing    = '----- Importing {0} file(s) -----'
+        Failed       = 'ERROR: {0}'
+        Created      = '{0} preset(s) created. Start Bambu Studio and they are uploaded and appear in the AMS list.'
+        DlgTitle     = 'Select filament profiles'
+        DlgFilter    = 'Filament profile (*.json)|*.json'
+    }
+}
+function T([string] $key, [object[]] $fmt = @()) { $s = $Strings[$Lang][$key]; if ($fmt.Count) { $s -f $fmt } else { $s } }
+
 if (-not (Test-Path $importScript)) {
-    [System.Windows.Forms.MessageBox]::Show("Hittar inte bambu_filament_import.ps1 i`n$scriptDir", 'Bambu filamentimport', 'OK', 'Error') | Out-Null
+    [System.Windows.Forms.MessageBox]::Show((T NoScript @($scriptDir)), (T Title), 'OK', 'Error') | Out-Null
     exit 1
 }
-$printer = 'Bambu Lab P1S 0.4 nozzle'
-$studioExe = @("$env:ProgramFiles\Bambu Studio\bambu-studio.exe", "${env:ProgramFiles(x86)}\Bambu Studio\bambu-studio.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
 
-# --- Förhandsvisning: samma namnlogik som importscriptet ---------------------------------
+# --- Förhandsvisning: samma namnlogik som importscriptet / preview: same naming as the script --
 function Get-PresetPreview([string] $path) {
     try {
         $j = [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) | ConvertFrom-Json
         $vendor = @($j.filament_vendor) | Select-Object -First 1
         $type   = @($j.filament_type)   | Select-Object -First 1
-        if (-not $vendor -or -not $type) { return [pscustomobject]@{ Ok = $false; Text = 'saknar tillverkare/typ – inte en filamentprofil' } }
+        if (-not $vendor -or -not $type) { return [pscustomobject]@{ Ok = $false; Text = (T NotProfile) } }
         $serial = ($j.name -split ' @')[0].Trim()
         if ($serial.StartsWith($vendor, 'InvariantCultureIgnoreCase')) { $serial = $serial.Substring($vendor.Length).Trim() }
         if ($serial.StartsWith($type,   'InvariantCultureIgnoreCase')) { $serial = $serial.Substring($type.Length).Trim() }
@@ -30,12 +102,11 @@ function Get-PresetPreview([string] $path) {
         if (-not $serial) { $serial = ($j.name -split ' @')[0].Trim() }
         $typeForName = if ($type -eq 'PLA-AERO') { 'PLA Aero' } else { $type }
         return [pscustomobject]@{ Ok = $true; Text = "$vendor $typeForName $serial"; Temp = (@($j.nozzle_temperature) | Select-Object -First 1); Bed = (@($j.hot_plate_temp) | Select-Object -First 1) }
-    } catch { return [pscustomobject]@{ Ok = $false; Text = "kan inte läsas: $($_.Exception.Message)" } }
+    } catch { return [pscustomobject]@{ Ok = $false; Text = (T Unreadable @($_.Exception.Message)) } }
 }
 
-# --- Fönster ------------------------------------------------------------------------------
+# --- Fönster / Window -------------------------------------------------------------------------
 $form = New-Object System.Windows.Forms.Form
-$form.Text = 'Bambu filamentimport'
 $form.Size = New-Object System.Drawing.Size(760, 600)
 $form.MinimumSize = New-Object System.Drawing.Size(620, 480)
 $form.StartPosition = 'CenterScreen'
@@ -43,9 +114,21 @@ $form.AllowDrop = $true
 $form.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
 
 $lblTop = New-Object System.Windows.Forms.Label
-$lblTop.Text = "Dra filament-JSON hit (Bambu-format, t.ex. från Addnorth) – eller använd knappen. Skrivare: $printer"
 $lblTop.Location = New-Object System.Drawing.Point(12, 12)
 $lblTop.AutoSize = $true
+
+$lblLang = New-Object System.Windows.Forms.Label
+$lblLang.AutoSize = $true
+$lblLang.Location = New-Object System.Drawing.Point(560, 14)
+$lblLang.Anchor = 'Top, Right'
+
+$cmbLang = New-Object System.Windows.Forms.ComboBox
+$cmbLang.DropDownStyle = 'DropDownList'
+[void]$cmbLang.Items.AddRange(@('Svenska', 'English'))
+$cmbLang.SelectedIndex = $(if ($Lang -eq 'sv') { 0 } else { 1 })
+$cmbLang.Location = New-Object System.Drawing.Point(632, 10)
+$cmbLang.Size = New-Object System.Drawing.Size(100, 24)
+$cmbLang.Anchor = 'Top, Right'
 
 $list = New-Object System.Windows.Forms.ListView
 $list.View = 'Details'
@@ -55,13 +138,12 @@ $list.AllowDrop = $true
 $list.Location = New-Object System.Drawing.Point(12, 40)
 $list.Size = New-Object System.Drawing.Size(720, 250)
 $list.Anchor = 'Top, Left, Right'
-[void]$list.Columns.Add('Fil', 300)
-[void]$list.Columns.Add('Blir preset', 260)
-[void]$list.Columns.Add('Temp / bädd', 90)
-[void]$list.Columns.Add('Status', 60)
+[void]$list.Columns.Add('', 300)
+[void]$list.Columns.Add('', 260)
+[void]$list.Columns.Add('', 90)
+[void]$list.Columns.Add('', 60)
 
 $dropHint = New-Object System.Windows.Forms.Label
-$dropHint.Text = "Släpp filer här"
 $dropHint.Font = New-Object System.Drawing.Font('Segoe UI', 16, [System.Drawing.FontStyle]::Italic)
 $dropHint.ForeColor = [System.Drawing.Color]::Gray
 $dropHint.AutoSize = $true
@@ -70,27 +152,23 @@ $list.Controls.Add($dropHint)
 $dropHint.Location = New-Object System.Drawing.Point(280, 100)
 
 $btnAdd = New-Object System.Windows.Forms.Button
-$btnAdd.Text = 'Lägg till filer…'
 $btnAdd.Location = New-Object System.Drawing.Point(12, 300)
 $btnAdd.Size = New-Object System.Drawing.Size(130, 30)
 
 $btnClear = New-Object System.Windows.Forms.Button
-$btnClear.Text = 'Rensa listan'
 $btnClear.Location = New-Object System.Drawing.Point(150, 300)
 $btnClear.Size = New-Object System.Drawing.Size(110, 30)
 
 $chkForce = New-Object System.Windows.Forms.CheckBox
-$chkForce.Text = 'Skriv över presets som redan finns'
 $chkForce.Location = New-Object System.Drawing.Point(275, 305)
 $chkForce.AutoSize = $true
 
 $btnImport = New-Object System.Windows.Forms.Button
-$btnImport.Text = 'Importera till Bambu Studio'
 $btnImport.Location = New-Object System.Drawing.Point(522, 296)
 $btnImport.Size = New-Object System.Drawing.Size(210, 38)
 $btnImport.Anchor = 'Top, Right'
 $btnImport.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
-$btnImport.BackColor = [System.Drawing.Color]::FromArgb(0, 174, 66)   # Bambu-grön
+$btnImport.BackColor = [System.Drawing.Color]::FromArgb(0, 174, 66)   # Bambu-grön / Bambu green
 $btnImport.ForeColor = [System.Drawing.Color]::White
 $btnImport.FlatStyle = 'Flat'
 $btnImport.Enabled = $false
@@ -103,36 +181,64 @@ $log.Font = New-Object System.Drawing.Font('Consolas', 9)
 $log.Location = New-Object System.Drawing.Point(12, 345)
 $log.Size = New-Object System.Drawing.Size(720, 170)
 $log.Anchor = 'Top, Bottom, Left, Right'
-$log.Text = "Klar. Bambu Studio måste vara stängt när du importerar.`r`n"
 
 $btnStudio = New-Object System.Windows.Forms.Button
-$btnStudio.Text = 'Starta Bambu Studio'
 $btnStudio.Location = New-Object System.Drawing.Point(582, 523)
 $btnStudio.Size = New-Object System.Drawing.Size(150, 30)
 $btnStudio.Anchor = 'Bottom, Right'
 $btnStudio.Visible = $false
 
-$form.Controls.AddRange(@($lblTop, $list, $btnAdd, $btnClear, $chkForce, $btnImport, $log, $btnStudio))
+$form.Controls.AddRange(@($lblTop, $lblLang, $cmbLang, $list, $btnAdd, $btnClear, $chkForce, $btnImport, $log, $btnStudio))
 
-# --- Logik --------------------------------------------------------------------------------
+# Statusar lagras språkoberoende i Tag-fältet / statuses stored language-independently in Tag
+$statusText = @{ waiting = 'StWaiting'; error = 'StError'; done = 'StDone'; exists = 'StExists'; skipped = 'StSkipped' }
+function Set-Status($item, [string] $status) { $item.Tag = @{ Path = $item.Tag.Path; Status = $status }; $item.SubItems[3].Text = (T $statusText[$status]) }
+
+function Apply-Language {
+    $form.Text         = T Title
+    $lblTop.Text       = T Top
+    $lblLang.Text      = T Language
+    $list.Columns[0].Text = T ColFile
+    $list.Columns[1].Text = T ColPreset
+    $list.Columns[2].Text = T ColTemp
+    $list.Columns[3].Text = T ColStatus
+    $dropHint.Text     = T DropHint
+    $btnAdd.Text       = T BtnAdd
+    $btnClear.Text     = T BtnClear
+    $chkForce.Text     = T ChkForce
+    $btnImport.Text    = T BtnImport
+    $btnStudio.Text    = T BtnStudio
+    foreach ($item in $list.Items) { $item.SubItems[3].Text = (T $statusText[$item.Tag.Status]) }
+    if ($log.Text.Trim() -eq '' -or $log.Text -eq ($Strings.sv.Ready + "`r`n") -or $log.Text -eq ($Strings.en.Ready + "`r`n")) { $log.Text = (T Ready) + "`r`n" }
+}
+Apply-Language
+
+$cmbLang.Add_SelectedIndexChanged({
+    $script:Lang = if ($cmbLang.SelectedIndex -eq 0) { 'sv' } else { 'en' }
+    try { New-Item -ItemType Directory -Force $settingsDir | Out-Null; Set-Content $langFile $script:Lang -NoNewline } catch {}
+    Apply-Language
+})
+
+# --- Logik / Logic ---------------------------------------------------------------------------
 function Write-Log([string] $s) { $log.AppendText(($s -replace "`n", "`r`n") + "`r`n") }
 
 function Add-Files([string[]] $paths) {
     foreach ($p in $paths) {
         if (Test-Path $p -PathType Container) { Add-Files ((Get-ChildItem $p -Filter *.json).FullName); continue }
         if ([IO.Path]::GetExtension($p) -ne '.json') { continue }
-        if ($list.Items | Where-Object { $_.Tag -eq $p }) { continue }
+        if ($list.Items | Where-Object { $_.Tag.Path -eq $p }) { continue }
         $pv = Get-PresetPreview $p
         $item = New-Object System.Windows.Forms.ListViewItem([IO.Path]::GetFileName($p))
-        $item.Tag = $p
+        $item.Tag = @{ Path = $p; Status = 'waiting' }
         [void]$item.SubItems.Add($pv.Text)
         [void]$item.SubItems.Add($(if ($pv.Ok) { "$($pv.Temp) / $($pv.Bed)" } else { '' }))
-        [void]$item.SubItems.Add($(if ($pv.Ok) { 'väntar' } else { 'fel' }))
+        [void]$item.SubItems.Add('')
+        Set-Status $item $(if ($pv.Ok) { 'waiting' } else { 'error' })
         if (-not $pv.Ok) { $item.ForeColor = [System.Drawing.Color]::Firebrick }
         [void]$list.Items.Add($item)
     }
     $dropHint.Visible = ($list.Items.Count -eq 0)
-    $btnImport.Enabled = (($list.Items | Where-Object { $_.SubItems[3].Text -eq 'väntar' }).Count -gt 0)
+    $btnImport.Enabled = (($list.Items | Where-Object { $_.Tag.Status -eq 'waiting' }).Count -gt 0)
 }
 
 $dragEnter = { param($s, $e) if ($e.Data.GetDataPresent([System.Windows.Forms.DataFormats]::FileDrop)) { $e.Effect = 'Copy' } }
@@ -142,9 +248,9 @@ $list.Add_DragEnter($dragEnter); $list.Add_DragDrop($dragDrop)
 
 $btnAdd.Add_Click({
     $dlg = New-Object System.Windows.Forms.OpenFileDialog
-    $dlg.Filter = 'Filamentprofil (*.json)|*.json'
+    $dlg.Filter = T DlgFilter
     $dlg.Multiselect = $true
-    $dlg.Title = 'Välj filamentprofiler'
+    $dlg.Title = T DlgTitle
     $dl = Join-Path $env:USERPROFILE 'Downloads'; if (Test-Path $dl) { $dlg.InitialDirectory = $dl }
     if ($dlg.ShowDialog() -eq 'OK') { Add-Files $dlg.FileNames }
 })
@@ -155,40 +261,41 @@ $btnStudio.Add_Click({ if ($studioExe) { Start-Process $studioExe }; $btnStudio.
 
 $btnImport.Add_Click({
     if (Get-Process -Name 'bambu-studio' -ErrorAction SilentlyContinue) {
-        [System.Windows.Forms.MessageBox]::Show("Bambu Studio körs.`n`nStäng det helt (även i systemfältet) och tryck Importera igen.", 'Bambu filamentimport', 'OK', 'Warning') | Out-Null
+        [System.Windows.Forms.MessageBox]::Show((T StudioRuns), (T Title), 'OK', 'Warning') | Out-Null
         return
     }
-    $files = @($list.Items | Where-Object { $_.SubItems[3].Text -eq 'väntar' } | ForEach-Object { $_.Tag })
+    $files = @($list.Items | Where-Object { $_.Tag.Status -eq 'waiting' } | ForEach-Object { $_.Tag.Path })
     if ($files.Count -eq 0) { return }
 
     $btnImport.Enabled = $false; $btnAdd.Enabled = $false; $btnClear.Enabled = $false
     $form.Cursor = 'WaitCursor'
-    Write-Log "----- Importerar $($files.Count) fil(er) -----"
+    Write-Log (T Importing @($files.Count))
     [System.Windows.Forms.Application]::DoEvents()
 
     $created = 0
     try {
-        $args = @{ Files = $files }
+        $args = @{ Files = $files; Lang = $Lang }
         if ($chkForce.Checked) { $args.Force = $true }
         $output = & $importScript @args -Printer $printer *>&1 | Out-String
         Write-Log $output.TrimEnd()
         foreach ($item in $list.Items) {
-            $name = [IO.Path]::GetFileName($item.Tag)
+            $name = [IO.Path]::GetFileName($item.Tag.Path)
             $block = ($output -split '=== ') | Where-Object { $_.StartsWith($name) } | Select-Object -First 1
             if (-not $block) { continue }
-            if     ($block -match 'SKRIVET')      { $item.SubItems[3].Text = 'klar';      $item.ForeColor = [System.Drawing.Color]::ForestGreen; $created++ }
-            elseif ($block -match 'finns redan')  { $item.SubItems[3].Text = 'finns';     $item.ForeColor = [System.Drawing.Color]::DarkOrange }
-            elseif ($block -match 'HOPPAR ÖVER')  { $item.SubItems[3].Text = 'hoppad';    $item.ForeColor = [System.Drawing.Color]::Firebrick }
+            # Markörerna finns på båda språken / markers exist in both languages
+            if     ($block -match 'SKRIVET|WRITTEN')             { Set-Status $item 'done';    $item.ForeColor = [System.Drawing.Color]::ForestGreen; $created++ }
+            elseif ($block -match 'FINNS REDAN|ALREADY EXISTS')  { Set-Status $item 'exists';  $item.ForeColor = [System.Drawing.Color]::DarkOrange }
+            elseif ($block -match 'HOPPAR ÖVER|SKIPPED')         { Set-Status $item 'skipped'; $item.ForeColor = [System.Drawing.Color]::Firebrick }
         }
     } catch {
-        Write-Log "FEL: $($_.Exception.Message)"
+        Write-Log (T Failed @($_.Exception.Message))
     }
 
     $form.Cursor = 'Default'
     $btnAdd.Enabled = $true; $btnClear.Enabled = $true
-    $btnImport.Enabled = (($list.Items | Where-Object { $_.SubItems[3].Text -eq 'väntar' }).Count -gt 0)
+    $btnImport.Enabled = (($list.Items | Where-Object { $_.Tag.Status -eq 'waiting' }).Count -gt 0)
     if ($created -gt 0) {
-        Write-Log "$created preset skapade. Starta Bambu Studio så laddas de upp och syns i AMS-listan."
+        Write-Log (T Created @($created))
         if ($studioExe) { $btnStudio.Visible = $true }
     }
 })

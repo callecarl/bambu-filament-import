@@ -2,6 +2,8 @@
 .SYNOPSIS
   Importerar tillverkar-filamentprofiler (Bambu-JSON, t.ex. från Addnorth) till Bambu Studio
   som riktiga "custom filaments" – dvs. så att de dyker upp i AMS-dropdownen.
+  / Imports vendor filament profiles (Bambu JSON, e.g. from addnorth) into Bambu Studio as
+  real "custom filaments" – i.e. so they show up in the AMS dropdown.
 
 .DESCRIPTION
   Bambu Studio visar bara filament i AMS-listan om de skapats via "Create New Filament".
@@ -11,26 +13,77 @@
     * compatible_printers = bara den skrivaren
     * .info med tomt setting_id  -> molnsynken laddar upp presetet vid nästa start
   Det här scriptet gör exakt det, plus normaliserar dubbla H2D-värden ("260","260") till ett
-  värde och fyller tomma tork-/overhang-fält från Studios Generic-profil för samma typ.
+  värde och kompletterar saknade fält från Studios Generic-profil för samma typ.
 
 .USAGE
   Dra en eller flera JSON-filer på "Importera filament till Bambu.bat", eller:
-    powershell -File bambu_filament_import.ps1 "fil1.json" "fil2.json" [-Printer "Bambu Lab P1S 0.4 nozzle"] [-Force] [-DryRun]
+    powershell -File bambu_filament_import.ps1 "fil1.json" "fil2.json"
+        [-Printer "Bambu Lab P1S 0.4 nozzle"] [-Lang sv|en] [-Force] [-DryRun]
 
   Bambu Studio MÅSTE vara stängt när scriptet körs (annars skriver Studio över filerna).
+  / Bambu Studio MUST be closed while the script runs.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
     [string[]] $Files,
     [Parameter()] [string] $Printer = 'Bambu Lab P1S 0.4 nozzle',
-    [Parameter()] [switch] $Force,      # skriv över befintligt preset med samma namn
-    [Parameter()] [switch] $DryRun,     # skriv inte till Studio-mappen, visa bara vad som skulle hända
-    [Parameter()] [string] $OutDir      # (för test) skriv hit i stället för till Studio-mappen
+    [Parameter()] [ValidateSet('sv', 'en')] [string] $Lang,   # tomt = följ Windows-språket / empty = follow Windows language
+    [Parameter()] [switch] $Force,      # skriv över befintligt preset med samma namn / overwrite existing preset
+    [Parameter()] [switch] $DryRun,     # visa bara vad som skulle hända / show what would happen, write nothing
+    [Parameter()] [string] $OutDir      # (för test) skriv hit i stället för till Studio-mappen / (testing) write here instead
 )
 
 $ErrorActionPreference = 'Stop'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+
+# --- Språk / Language ----------------------------------------------------------------------
+if (-not $Lang) { $Lang = if ((Get-Culture).TwoLetterISOLanguageName -eq 'sv') { 'sv' } else { 'en' } }
+$Strings = @{
+    sv = @{
+        NoFiles       = 'Inga filer angivna. Dra JSON-filer på .bat-filen eller ange sökvägar som argument.'
+        StudioRunning = 'Bambu Studio körs. Stäng det helt (även i systemfältet) och kör igen.'
+        UserDirs      = 'Hittade {0} inloggade användarmappar under {1} – förväntade exakt en (är du inloggad i Studio?).'
+        SkipNoVendor  = 'HOPPAR ÖVER: saknar filament_vendor/filament_type'
+        SkipIdUsed    = "HOPPAR ÖVER: filament_id {0} används redan av '{1}'"
+        Exists        = "FINNS REDAN: '{0}' (använd -Force för att skriva över)"
+        DiffValues    = '{0}: olika värden ({1} / {2}) – tog första'
+        NoGeneric     = 'hittade ingen Generic {0}-profil – saknade fält får Studios standardvärden'
+        Name          = 'namn:       '
+        Id            = 'filament_id:'
+        TempBed       = 'temp/bädd/flöde:'
+        Added         = '{0} saknade fält tillagda från Generic {1}'
+        Filled        = 'fyllda från Generic {0}: {1}'
+        Note          = 'obs:'
+        DryRun        = '(dry run – inget skrivet)'
+        Backup        = 'befintligt preset säkerhetskopierat till {0}'
+        Written       = 'SKRIVET -> {0}'
+        Done          = "{0} preset skapade. Starta Bambu Studio: de laddas upp till molnet och syns sedan i AMS-listan under '{1}'."
+        Nothing       = 'Inget skrevs.'
+    }
+    en = @{
+        NoFiles       = 'No files given. Drop JSON files on the .bat file or pass paths as arguments.'
+        StudioRunning = 'Bambu Studio is running. Close it completely (also in the system tray) and run again.'
+        UserDirs      = 'Found {0} user folders under {1} – expected exactly one (are you logged in to Studio?).'
+        SkipNoVendor  = 'SKIPPED: missing filament_vendor/filament_type'
+        SkipIdUsed    = "SKIPPED: filament_id {0} is already used by '{1}'"
+        Exists        = "ALREADY EXISTS: '{0}' (use -Force to overwrite)"
+        DiffValues    = '{0}: differing values ({1} / {2}) – took the first'
+        NoGeneric     = 'no Generic {0} profile found – missing fields get Studio defaults'
+        Name          = 'name:       '
+        Id            = 'filament_id:'
+        TempBed       = 'temp/bed/flow:'
+        Added         = '{0} missing fields added from Generic {1}'
+        Filled        = 'filled from Generic {0}: {1}'
+        Note          = 'note:'
+        DryRun        = '(dry run – nothing written)'
+        Backup        = 'existing preset backed up to {0}'
+        Written       = 'WRITTEN -> {0}'
+        Done          = "{0} preset(s) created. Start Bambu Studio: they are uploaded to the cloud and then appear in the AMS list under '{1}'."
+        Nothing       = 'Nothing written.'
+    }
+}
+function T([string] $key, [object[]] $fmt = @()) { $s = $Strings[$Lang][$key]; if ($fmt.Count) { $s -f $fmt } else { $s } }
 
 function Get-Md5Hex([string] $s) {
     $md5 = [System.Security.Cryptography.MD5]::Create()
@@ -45,11 +98,11 @@ function Write-Utf8([string] $path, [string] $text) {
     [IO.File]::WriteAllText($path, $text, $Utf8NoBom)
 }
 
-# --- Studio-mappar -----------------------------------------------------------------------
+# --- Studio-mappar / Studio folders ---------------------------------------------------------
 $studioRoot = Join-Path $env:APPDATA 'BambuStudio'
 $userDirs = Get-ChildItem (Join-Path $studioRoot 'user') -Directory | Where-Object { $_.Name -match '^\d+$' }
 if ($userDirs.Count -ne 1) {
-    throw "Hittade $($userDirs.Count) inloggade användarmappar under $studioRoot\user – förväntade exakt en (är du inloggad i Studio?)."
+    throw (T UserDirs @($userDirs.Count, "$studioRoot\user"))
 }
 $userId     = $userDirs[0].Name
 $userBase   = Join-Path $userDirs[0].FullName 'filament\base'
@@ -57,17 +110,17 @@ $systemFila = Join-Path $studioRoot 'system\BBL\filament'
 $targetDir  = if ($OutDir) { $OutDir } else { $userBase }
 
 if (-not $Files -or $Files.Count -eq 0) {
-    Write-Host "Inga filer angivna. Dra JSON-filer på .bat-filen eller ange sökvägar som argument." -ForegroundColor Yellow
+    Write-Host (T NoFiles) -ForegroundColor Yellow
     exit 1
 }
 
 if (-not $DryRun -and -not $OutDir) {
     if (Get-Process -Name 'bambu-studio' -ErrorAction SilentlyContinue) {
-        throw "Bambu Studio körs. Stäng det helt (även i systemfältet) och kör igen."
+        throw (T StudioRunning)
     }
 }
 
-# --- Studios Generic-profil per typ (för att fylla tomma fält) ---------------------------
+# --- Studios Generic-profil per typ / Studio's Generic profile per type ------------------------
 # Systemprofilerna ärver i flera led (Generic PETG @BBL X1C -> Generic PETG @base -> fdm_filament_petg).
 $script:sysCache = @{}
 function Resolve-SystemPreset([string] $name) {
@@ -92,11 +145,11 @@ function Get-GenericForType([string] $type) {
         $r = Resolve-SystemPreset $c.BaseName
         if ($r -and (@($r.compatible_printers) -contains $Printer)) { return $r }
     }
-    # fallback: @base-profilen
     return Resolve-SystemPreset "Generic $type @base"
 }
 
 # Fält som tillverkare ofta lämnar tomma/0 men där Studios Generic har vettiga värden.
+# / Fields vendors often leave empty/0 where Studio's Generic has sensible values.
 $fillFromGeneric = @(
     'filament_dev_ams_drying_ams_limitations', 'filament_dev_ams_drying_heat_distortion_temperature',
     'filament_dev_ams_drying_temperature', 'filament_dev_ams_drying_time',
@@ -111,20 +164,21 @@ function Test-Empty($v) {
     return ($s -eq '' -or $s -eq '0' -or $s -eq 'nil' -or ($s -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '0' -and $_ -ne '' }).Count -eq 0)
 }
 
-# Version: ta högsta versionen bland befintliga user-presets så filen matchar Studios egna.
+# Version: högsta bland befintliga user-presets så filen matchar Studios egna.
+# / Version: highest among existing user presets so the file matches Studio's own.
 $studioVersion = $null
 $existing = Get-ChildItem $userBase -Filter *.json -ErrorAction SilentlyContinue
 foreach ($e in $existing) {
     try { $v = [version]((Read-Json $e.FullName).version); if (-not $studioVersion -or $v -gt $studioVersion) { $studioVersion = $v } } catch {}
 }
 
-# Befintliga filament-id:n (för kollisionskontroll, som Studio gör)
+# Befintliga filament-id:n (kollisionskontroll, som Studio gör) / existing ids (collision check)
 $existingIds = @{}
 foreach ($e in $existing) {
     try { $j = Read-Json $e.FullName; $nm = ($j.name -split ' @')[0]; if ($j.filament_id) { $existingIds[$j.filament_id] = $nm } } catch {}
 }
 
-# --- Bearbeta varje fil ------------------------------------------------------------------
+# --- Bearbeta varje fil / Process each file ---------------------------------------------------
 $results = @()
 foreach ($file in $Files) {
     $file = (Resolve-Path $file).Path
@@ -133,9 +187,10 @@ foreach ($file in $Files) {
 
     $vendor = (@($src.filament_vendor) | Select-Object -First 1)
     $type   = (@($src.filament_type)   | Select-Object -First 1)
-    if (-not $vendor -or -not $type) { Write-Host "  HOPPAR ÖVER: saknar filament_vendor/filament_type" -ForegroundColor Red; continue }
+    if (-not $vendor -or -not $type) { Write-Host "  $(T SkipNoVendor)" -ForegroundColor Red; continue }
 
     # Serienamn = namnet minus tillverkare och typ i början ("addnorth PETG Base" -> "Base")
+    # / Serial = name minus leading vendor and type
     $serial = ($src.name -split ' @')[0].Trim()
     if ($serial.StartsWith($vendor, 'InvariantCultureIgnoreCase')) { $serial = $serial.Substring($vendor.Length).Trim() }
     if ($serial.StartsWith($type,   'InvariantCultureIgnoreCase')) { $serial = $serial.Substring($type.Length).Trim() }
@@ -148,30 +203,31 @@ foreach ($file in $Files) {
     $filamentId   = 'P' + (Get-Md5Hex "$filamentName@$userId").Substring(0, 7)
 
     if ($existingIds.ContainsKey($filamentId) -and $existingIds[$filamentId] -ne $filamentName) {
-        Write-Host "  HOPPAR ÖVER: filament_id $filamentId används redan av '$($existingIds[$filamentId])'" -ForegroundColor Red; continue
+        Write-Host "  $(T SkipIdUsed @($filamentId, $existingIds[$filamentId]))" -ForegroundColor Red; continue
     }
 
     $outJson = Join-Path $targetDir "$presetName.json"
     $outInfo = Join-Path $targetDir "$presetName.info"
     if ((Test-Path $outJson) -and -not $Force) {
-        Write-Host "  HOPPAR ÖVER: '$presetName' finns redan (använd -Force för att skriva över)" -ForegroundColor Yellow; continue
+        Write-Host "  $(T Exists @($presetName))" -ForegroundColor Yellow; continue
     }
 
-    # Bygg preset-objektet från källfilen
+    # Bygg preset-objektet från källfilen / build the preset from the source file
     $out = [ordered]@{}
     $notes = @()
     foreach ($p in $src.PSObject.Properties) {
         $v = $p.Value
         # H2D-format: två värden per fält -> ett (P1S har ett munstycke).
         # Tork-fälten (filament_dev_ams_drying_*) är per AMS-typ, inte per munstycke – rör ej.
+        # / H2D format: two values per field -> one. Drying fields are per AMS type – leave them.
         if ($v -is [array] -and $v.Count -eq 2 -and $p.Name -notlike 'filament_dev_ams_drying*') {
-            if ($v[0] -ne $v[1]) { $notes += "$($p.Name): olika värden ($($v[0]) / $($v[1])) – tog första" }
+            if ($v[0] -ne $v[1]) { $notes += (T DiffValues @($p.Name, $v[0], $v[1])) }
             $v = @($v[0])
         }
         $out[$p.Name] = $v
     }
 
-    # Identitet – exakt som Studios "Create New Filament"
+    # Identitet – exakt som Studios "Create New Filament" / identity – exactly as Create New Filament
     $out['name']                 = $presetName
     $out['filament_settings_id'] = @($presetName)
     $out['filament_id']          = $filamentId
@@ -186,6 +242,7 @@ foreach ($file in $Files) {
     # Komplettera från Studios Generic <typ> – samma bas som "Create New Filament" utgår från:
     #  * nycklar som tillverkarfilen saknar helt läggs till med Generic-värdet
     #  * tork-/overhang-fält som tillverkaren lämnat tomma/0 ersätts med Generic-värdet
+    # / Complete from Studio's Generic <type>: add missing keys, replace empty drying/overhang fields.
     $generic = Get-GenericForType $type
     $filled = @(); $added = @()
     $identityKeys = 'name','filament_settings_id','filament_id','filament_vendor','filament_type','compatible_printers','from','inherits','version','instantiation','is_custom_defined','type','base_id','setting_id','filament_start_gcode','filament_end_gcode','filament_notes'
@@ -193,7 +250,7 @@ foreach ($file in $Files) {
         foreach ($gp in $generic.PSObject.Properties) {
             if ($identityKeys -contains $gp.Name) { continue }
             if (-not $out.Contains($gp.Name)) {
-                $out[$gp.Name] = $gp.Value; $added += $gp.Name   # systemprofilen är redan per skrivare
+                $out[$gp.Name] = $gp.Value; $added += $gp.Name   # systemprofilen är redan per skrivare / already per printer
             }
         }
         foreach ($k in $fillFromGeneric) {
@@ -201,37 +258,37 @@ foreach ($file in $Files) {
                 $out[$k] = $generic.$k; $filled += $k
             }
         }
-    } else { $notes += "hittade ingen Generic $type-profil – saknade fält får Studios standardvärden" }
+    } else { $notes += (T NoGeneric @($type)) }
 
     $now  = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     $info = "sync_info = create`nuser_id = $userId`nsetting_id = `nbase_id = `nupdated_time = $now`n"
     $json = [pscustomobject]$out | ConvertTo-Json -Depth 6
 
-    Write-Host "  namn:        $presetName"
-    Write-Host "  filament_id: $filamentId"
-    Write-Host "  temp/bädd/flöde: $($out['nozzle_temperature'] -join ',') / $($out['hot_plate_temp'] -join ',') / $($out['filament_flow_ratio'] -join ',')"
-    if ($added)  { Write-Host "  $($added.Count) saknade fält tillagda från Generic $type" -ForegroundColor DarkGray }
-    if ($filled) { Write-Host "  fyllda från Generic ${type}: $($filled -join ', ')" -ForegroundColor DarkGray }
-    foreach ($n in $notes) { Write-Host "  obs: $n" -ForegroundColor Yellow }
+    Write-Host "  $(T Name) $presetName"
+    Write-Host "  $(T Id) $filamentId"
+    Write-Host "  $(T TempBed) $($out['nozzle_temperature'] -join ',') / $($out['hot_plate_temp'] -join ',') / $($out['filament_flow_ratio'] -join ',')"
+    if ($added)  { Write-Host "  $(T Added @($added.Count, $type))" -ForegroundColor DarkGray }
+    if ($filled) { Write-Host "  $(T Filled @($type, ($filled -join ', ')))" -ForegroundColor DarkGray }
+    foreach ($n in $notes) { Write-Host "  $(T Note) $n" -ForegroundColor Yellow }
 
-    if ($DryRun) { Write-Host "  (dry run – inget skrivet)" -ForegroundColor DarkGray; continue }
+    if ($DryRun) { Write-Host "  $(T DryRun)" -ForegroundColor DarkGray; continue }
 
     if (Test-Path $outJson) {
         $bak = Join-Path (Split-Path $targetDir) ("_backup_import_" + (Get-Date -Format 'yyyyMMdd_HHmm'))
         New-Item -ItemType Directory -Force $bak | Out-Null
         Copy-Item $outJson, $outInfo $bak -ErrorAction SilentlyContinue
-        Write-Host "  befintligt preset säkerhetskopierat till $bak" -ForegroundColor DarkGray
+        Write-Host "  $(T Backup @($bak))" -ForegroundColor DarkGray
     }
     New-Item -ItemType Directory -Force $targetDir | Out-Null
     Write-Utf8 $outJson $json
     Write-Utf8 $outInfo $info
-    Write-Host "  SKRIVET -> $outJson" -ForegroundColor Green
+    Write-Host "  $(T Written @($outJson))" -ForegroundColor Green
     $results += $presetName
 }
 
 Write-Host ""
 if ($results.Count -gt 0) {
-    Write-Host "$($results.Count) preset skapade. Starta Bambu Studio: de laddas upp till molnet och syns sedan i AMS-listan under '$((Read-Json $Files[0]).filament_vendor)'." -ForegroundColor Green
+    Write-Host (T Done @($results.Count, (@((Read-Json $Files[0]).filament_vendor) | Select-Object -First 1))) -ForegroundColor Green
 } elseif (-not $DryRun) {
-    Write-Host "Inget skrevs." -ForegroundColor Yellow
+    Write-Host (T Nothing) -ForegroundColor Yellow
 }
