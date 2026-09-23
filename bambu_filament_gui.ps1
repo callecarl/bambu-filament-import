@@ -22,7 +22,7 @@ if ($Lang -notin 'sv', 'en') { $Lang = if ((Get-Culture).TwoLetterISOLanguageNam
 $Strings = @{
     sv = @{
         Title        = 'Bambu filamentimport'
-        Top          = "Dra filament-JSON hit (Bambu-format, t.ex. från Addnorth) – eller använd knappen. Skrivare: $printer"
+        Top          = "Dra filament-JSON hit (t.ex. från Addnorth) eller använd knappen. Skrivare: $printer"
         ColFile      = 'Fil'
         ColPreset    = 'Blir preset'
         ColTemp      = 'Temp / bädd'
@@ -52,7 +52,7 @@ $Strings = @{
     }
     en = @{
         Title        = 'Bambu filament import'
-        Top          = "Drop filament JSON files here (Bambu format, e.g. from addnorth) – or use the button. Printer: $printer"
+        Top          = "Drop filament JSON files here (e.g. from addnorth) or use the button. Printer: $printer"
         ColFile      = 'File'
         ColPreset    = 'Becomes preset'
         ColTemp      = 'Temp / bed'
@@ -116,6 +116,7 @@ $form.Font = New-Object System.Drawing.Font('Segoe UI', 9.5)
 $lblTop = New-Object System.Windows.Forms.Label
 $lblTop.Location = New-Object System.Drawing.Point(12, 12)
 $lblTop.AutoSize = $true
+$lblTop.MaximumSize = New-Object System.Drawing.Size(535, 0)   # radbryt före språkväljaren / wrap before the language box
 
 $lblLang = New-Object System.Windows.Forms.Label
 $lblLang.AutoSize = $true
@@ -135,8 +136,8 @@ $list.View = 'Details'
 $list.FullRowSelect = $true
 $list.GridLines = $true
 $list.AllowDrop = $true
-$list.Location = New-Object System.Drawing.Point(12, 40)
-$list.Size = New-Object System.Drawing.Size(720, 250)
+$list.Location = New-Object System.Drawing.Point(12, 52)
+$list.Size = New-Object System.Drawing.Size(720, 238)
 $list.Anchor = 'Top, Left, Right'
 [void]$list.Columns.Add('', 300)
 [void]$list.Columns.Add('', 260)
