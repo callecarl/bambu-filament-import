@@ -227,26 +227,33 @@ $btnImport.Add_Click({
     [System.Windows.Forms.Application]::DoEvents()
 
     $created = 0
+    # Utdata samlas medan scriptet körs, så att det som hann hända finns kvar vid ett fel
+    # / output is collected while the script runs, so what already happened is kept on an error
+    $output = New-Object System.Collections.ArrayList
+    $failed = $null
     try {
         $args = @{ Files = $files; Lang = $Lang; PassThru = $true }
         if ($chkForce.Checked) { $args.Force = $true }
-        $output = @(& $importScript @args -Printer $printer *>&1)
-        # Resultatobjekt (har Result) styr statusen, resten går till loggen som förut
-        # / result objects (they have Result) set the status, everything else goes to the log as before
-        $results = @($output | Where-Object { $_.PSObject.Properties['Result'] })
-        Write-Log (($output | Where-Object { -not $_.PSObject.Properties['Result'] } | Out-String).TrimEnd())
-        foreach ($r in $results) {
-            $item = $list.Items | Where-Object { $_.Tag.Path -eq $r.File } | Select-Object -First 1
-            if (-not $item) { continue }
-            switch ($r.Result) {
-                'Written' { Set-Status $item 'done';    $item.ForeColor = [System.Drawing.Color]::ForestGreen; $created++ }
-                'Exists'  { Set-Status $item 'exists';  $item.ForeColor = [System.Drawing.Color]::DarkOrange }
-                'Skipped' { Set-Status $item 'skipped'; $item.ForeColor = [System.Drawing.Color]::Firebrick }
-            }
-        }
+        & $importScript @args -Printer $printer *>&1 | ForEach-Object { [void]$output.Add($_) }
     } catch {
-        Write-Log (T Failed @($_.Exception.Message))
+        $failed = $_.Exception.Message
     }
+
+    # Resultatobjekt (har Result) styr statusen, resten går till loggen som förut
+    # / result objects (they have Result) set the status, everything else goes to the log as before
+    $results = @($output | Where-Object { $_.PSObject.Properties['Result'] })
+    $text = ($output | Where-Object { -not $_.PSObject.Properties['Result'] } | Out-String).TrimEnd()
+    if ($text) { Write-Log $text }
+    foreach ($r in $results) {
+        $item = $list.Items | Where-Object { $_.Tag.Path -eq $r.File } | Select-Object -First 1
+        if (-not $item) { continue }
+        switch ($r.Result) {
+            'Written' { Set-Status $item 'done';    $item.ForeColor = [System.Drawing.Color]::ForestGreen; $created++ }
+            'Exists'  { Set-Status $item 'exists';  $item.ForeColor = [System.Drawing.Color]::DarkOrange }
+            'Skipped' { Set-Status $item 'skipped'; $item.ForeColor = [System.Drawing.Color]::Firebrick }
+        }
+    }
+    if ($failed) { Write-Log (T Failed @($failed)) }
 
     $form.Cursor = 'Default'
     $btnAdd.Enabled = $true; $btnClear.Enabled = $true
