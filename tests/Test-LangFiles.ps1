@@ -42,6 +42,8 @@ try { $ref = Import-PowerShellDataFile $refFile } catch { Write-Host "en.psd1: c
 
 foreach ($file in Get-ChildItem $langDir -Filter '*.psd1' | Sort-Object Name) {
     $name = $file.Name
+    # Filnamnet är koden: två små bokstäver (ISO 639-1) / the file name is the code: two lowercase letters (ISO 639-1)
+    if ($file.BaseName -cnotmatch '^[a-z]{2}$') { $problems.Add("${name}: file name must be a two-letter lowercase ISO 639-1 code, e.g. de.psd1") }
     if (-not (Test-Bom $file.FullName)) { $problems.Add("${name}: not saved as UTF-8 with BOM") }
 
     try { $data = Import-PowerShellDataFile $file.FullName }
@@ -64,6 +66,8 @@ foreach ($file in Get-ChildItem $langDir -Filter '*.psd1' | Sort-Object Name) {
             if (-not $d.ContainsKey($k)) { $problems.Add("${name}: $section.${k}: missing key"); continue }
             $pr = Get-Placeholders ([string] $r[$k]); $pd = Get-Placeholders ([string] $d[$k])
             if ($pr -ne $pd) { $problems.Add("${name}: $section.${k}: placeholders {$pd} differ from en.psd1 {$pr}") }
+            # Texten måste gå att formatera med -f (t.ex. ingen ensam { eller }) / the text must work with -f (e.g. no stray { or })
+            try { [void] ([string] $d[$k] -f @(0..9)) } catch { $problems.Add("${name}: $section.${k}: not a valid format string (stray { or }?)") }
         }
         foreach ($k in ($d.Keys | Sort-Object)) {
             if (-not $r.ContainsKey($k)) { $problems.Add("${name}: $section.${k}: extra key (not in en.psd1)") }
