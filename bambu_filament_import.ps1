@@ -153,13 +153,14 @@ function Out-Result([string] $file, $preset, [string] $result) {
 # --- Bearbeta varje fil / Process each file ---------------------------------------------------
 $results = @()
 foreach ($file in $Files) {
+    $given = $file   # sökvägen som angavs, för -PassThru / the path as given, for -PassThru
     $file = (Resolve-Path $file).Path
     Write-Host "`n=== $(Split-Path $file -Leaf)" -ForegroundColor Cyan
     $src = Read-Json $file
 
     $vendor = (@($src.filament_vendor) | Select-Object -First 1)
     $type   = (@($src.filament_type)   | Select-Object -First 1)
-    if (-not $vendor -or -not $type) { Write-Host "  $(T SkipNoVendor)" -ForegroundColor Red; Out-Result $file $null 'Skipped'; continue }
+    if (-not $vendor -or -not $type) { Write-Host "  $(T SkipNoVendor)" -ForegroundColor Red; Out-Result $given $null 'Skipped'; continue }
 
     # Serienamn = namnet minus tillverkare och typ i början ("addnorth PETG Base" -> "Base")
     # / Serial = name minus leading vendor and type
@@ -175,13 +176,13 @@ foreach ($file in $Files) {
     $filamentId   = 'P' + (Get-Md5Hex "$filamentName@$userId").Substring(0, 7)
 
     if ($existingIds.ContainsKey($filamentId) -and $existingIds[$filamentId] -ne $filamentName) {
-        Write-Host "  $(T SkipIdUsed @($filamentId, $existingIds[$filamentId]))" -ForegroundColor Red; Out-Result $file $presetName 'Skipped'; continue
+        Write-Host "  $(T SkipIdUsed @($filamentId, $existingIds[$filamentId]))" -ForegroundColor Red; Out-Result $given $presetName 'Skipped'; continue
     }
 
     $outJson = Join-Path $targetDir "$presetName.json"
     $outInfo = Join-Path $targetDir "$presetName.info"
     if ((Test-Path $outJson) -and -not $Force) {
-        Write-Host "  $(T Exists @($presetName))" -ForegroundColor Yellow; Out-Result $file $presetName 'Exists'; continue
+        Write-Host "  $(T Exists @($presetName))" -ForegroundColor Yellow; Out-Result $given $presetName 'Exists'; continue
     }
 
     # Bygg preset-objektet från källfilen / build the preset from the source file
@@ -243,7 +244,7 @@ foreach ($file in $Files) {
     if ($filled) { Write-Host "  $(T Filled @($type, ($filled -join ', ')))" -ForegroundColor DarkGray }
     foreach ($n in $notes) { Write-Host "  $(T Note) $n" -ForegroundColor Yellow }
 
-    if ($DryRun) { Write-Host "  $(T DryRun)" -ForegroundColor DarkGray; Out-Result $file $presetName 'DryRun'; continue }
+    if ($DryRun) { Write-Host "  $(T DryRun)" -ForegroundColor DarkGray; Out-Result $given $presetName 'DryRun'; continue }
 
     if (Test-Path $outJson) {
         $bak = Join-Path (Split-Path $targetDir) ("_backup_import_" + (Get-Date -Format 'yyyyMMdd_HHmm'))
@@ -255,7 +256,7 @@ foreach ($file in $Files) {
     Write-Utf8 $outJson $json
     Write-Utf8 $outInfo $info
     Write-Host "  $(T Written @($outJson))" -ForegroundColor Green
-    Out-Result $file $presetName 'Written'
+    Out-Result $given $presetName 'Written'
     $results += $presetName
 }
 
