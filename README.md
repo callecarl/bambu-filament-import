@@ -4,7 +4,7 @@ Make third‑party filament profiles (e.g. the JSON presets that **addnorth** an
 vendors publish for Bambu Studio) show up in the **AMS filament dropdown** – without
 clicking through *Create New Filament* for every single profile.
 
-*Svensk sammanfattning längre ner.*
+*Svensk sammanfattning längre ner.* *Deutsche Kurzfassung weiter unten.*
 
 ## The problem
 
@@ -56,7 +56,7 @@ window, press **Import to Bambu Studio**, then start Studio. The presets appear 
 the vendor's name in the AMS dropdown (e.g. *addnorth → PETG → Base*).
 
 The window and the messages are available in every language in the `lang/` folder – today
-**English and Swedish**. Pick the language in the top‑right corner. The first time, the tool
+**English, German and Swedish**. Pick the language in the top‑right corner. The first time, the tool
 uses your Windows language when it is available, otherwise English, and then remembers your
 choice.
 
@@ -81,7 +81,7 @@ Options:
 | Flag | Meaning |
 |------|---------|
 | `-Printer "Bambu Lab X1C 0.4 nozzle"` | Target printer/nozzle. Default: `Bambu Lab P1S 0.4 nozzle`. Use the exact name Studio uses. |
-| `-Lang <code>` | Language of the messages: any language in `lang/`, e.g. `en` or `sv`. Default: your Windows language when it is available, otherwise `en`. |
+| `-Lang <code>` | Language of the messages: any language in `lang/`, e.g. `en`, `de` or `sv`. Default: your Windows language when it is available, otherwise `en`. |
 | `-Force` | Overwrite a preset with the same name (a backup is taken first). |
 | `-DryRun` | Show what would be created without writing anything. |
 | `-OutDir <dir>` | Write to a different folder instead of the Studio user folder (for testing). |
@@ -129,6 +129,23 @@ sätt som Studio och skriver presetet direkt till Studios användarmapp.
 
 Ta bort presets inifrån Studio, inte genom att radera filer. Standardskrivare är P1S 0.4;
 ange `-Printer` för andra.
+
+## Deutsche Kurzfassung
+
+Bambu Studio zeigt eigene Filamente nur dann in der AMS‑Filamentliste an, wenn sie über
+*Filament erstellen* angelegt wurden. Importierte Herstellerprofile (z. B. von addnorth)
+erscheinen zwar in der Filamentliste unter *Vorbereiten*, aber nicht im AMS, weil ihnen die
+richtige `filament_id` fehlt. Dieses Tool berechnet die ID auf dieselbe Weise wie Studio und
+schreibt das Profil direkt in den Benutzerordner von Studio.
+
+1. Beenden Sie Bambu Studio.
+2. Starten Sie `Bambu filament import.bat`, wählen Sie oben rechts *Deutsch*, ziehen Sie die
+   JSON‑Dateien in das Fenster und klicken Sie auf **In Bambu Studio importieren**.
+3. Starten Sie Studio – die Filamente stehen jetzt unter dem Namen des Herstellers in der
+   AMS‑Filamentliste.
+
+Löschen Sie Profile in Studio selbst, nicht durch Löschen der Dateien. Standarddrucker ist der
+P1S mit 0,4‑mm‑Düse; geben Sie für andere Drucker `-Printer` an.
 
 ## License
 
