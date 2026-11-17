@@ -36,7 +36,7 @@
         ColTemp      = 'Temp. / Bett'
         ColStatus    = 'Status'
         DropHint     = 'Dateien hier ablegen'
-        BtnAdd       = 'Hinzufügen…'
+        BtnAdd       = 'Hinzufügen'
         BtnClear     = 'Liste leeren'
         ChkForce     = 'Vorhandene Profile überschreiben'
         BtnImport    = 'In Bambu Studio importieren'
