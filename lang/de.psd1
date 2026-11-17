@@ -11,11 +11,11 @@
         SkipNoVendor  = 'ÜBERSPRUNGEN: filament_vendor/filament_type fehlt'
         SkipIdUsed    = "ÜBERSPRUNGEN: filament_id {0} wird bereits von '{1}' verwendet"
         Exists        = "EXISTIERT BEREITS: '{0}' (mit -Force überschreiben)"
-        DiffValues    = '{0}: unterschiedliche Werte ({1} / {2}) – den ersten übernommen'
+        DiffValues    = '{0}: unterschiedliche Werte ({1} / {2}) – der erste wurde übernommen'
         NoGeneric     = 'kein Profil Generic {0} gefunden – fehlende Felder erhalten die Standardwerte von Studio'
         Name          = 'Name:       '
         Id            = 'filament_id:'
-        TempBed       = 'Temp./Druckbett/Fluss:'
+        TempBed       = 'Temp./Druckbett/Flussverhältnis:'
         Added         = '{0} fehlende Felder aus Generic {1} ergänzt'
         Filled        = 'aus Generic {0} ergänzt: {1}'
         Note          = 'Hinweis:'
@@ -32,7 +32,7 @@
         Title        = 'Bambu Filament-Import'
         Top          = 'Ziehen Sie Filament-JSON-Dateien hierher (z. B. von addnorth) oder nutzen Sie die Schaltfläche. Drucker: {0}'
         ColFile      = 'Datei'
-        ColPreset    = 'Wird zu Profil'
+        ColPreset    = 'Wird zum Profil'
         ColTemp      = 'Temp. / Druckbett'
         ColStatus    = 'Status'
         DropHint     = 'Dateien hier ablegen'
