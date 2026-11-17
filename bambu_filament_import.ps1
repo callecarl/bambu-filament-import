@@ -31,7 +31,8 @@ param(
     [Parameter()] [string] $Lang,      # ett språk i lang/, tomt = följ Windows-språket / a language in lang/, empty = follow Windows language
     [Parameter()] [switch] $Force,      # skriv över befintligt preset med samma namn / overwrite existing preset
     [Parameter()] [switch] $DryRun,     # visa bara vad som skulle hända / show what would happen, write nothing
-    [Parameter()] [string] $OutDir      # (för test) skriv hit i stället för till Studio-mappen / (testing) write here instead
+    [Parameter()] [string] $OutDir,     # (för test) skriv hit i stället för till Studio-mappen / (testing) write here instead
+    [Parameter()] [switch] $PassThru    # returnera ett resultatobjekt per fil / return one result object per file
 )
 
 $ErrorActionPreference = 'Stop'
@@ -145,6 +146,12 @@ foreach ($e in $existing) {
     try { $j = Read-Json $e.FullName; $nm = ($j.name -split ' @')[0]; if ($j.filament_id) { $existingIds[$j.filament_id] = $nm } } catch {}
 }
 
+# Språkoberoende resultat per fil (File, Preset, Result), bara med -PassThru
+# / language-independent result per file (File, Preset, Result), only with -PassThru
+function Out-Result([string] $file, $preset, [string] $result) {
+    if ($PassThru) { [pscustomobject]@{ File = $file; Preset = $preset; Result = $result } }
+}
+
 # --- Bearbeta varje fil / Process each file ---------------------------------------------------
 $results = @()
 foreach ($file in $Files) {
@@ -154,7 +161,7 @@ foreach ($file in $Files) {
 
     $vendor = (@($src.filament_vendor) | Select-Object -First 1)
     $type   = (@($src.filament_type)   | Select-Object -First 1)
-    if (-not $vendor -or -not $type) { Write-Host "  $(T SkipNoVendor)" -ForegroundColor Red; continue }
+    if (-not $vendor -or -not $type) { Write-Host "  $(T SkipNoVendor)" -ForegroundColor Red; Out-Result $file $null 'Skipped'; continue }
 
     # Serienamn = namnet minus tillverkare och typ i början ("addnorth PETG Base" -> "Base")
     # / Serial = name minus leading vendor and type
@@ -170,13 +177,13 @@ foreach ($file in $Files) {
     $filamentId   = 'P' + (Get-Md5Hex "$filamentName@$userId").Substring(0, 7)
 
     if ($existingIds.ContainsKey($filamentId) -and $existingIds[$filamentId] -ne $filamentName) {
-        Write-Host "  $(T SkipIdUsed @($filamentId, $existingIds[$filamentId]))" -ForegroundColor Red; continue
+        Write-Host "  $(T SkipIdUsed @($filamentId, $existingIds[$filamentId]))" -ForegroundColor Red; Out-Result $file $presetName 'Skipped'; continue
     }
 
     $outJson = Join-Path $targetDir "$presetName.json"
     $outInfo = Join-Path $targetDir "$presetName.info"
     if ((Test-Path $outJson) -and -not $Force) {
-        Write-Host "  $(T Exists @($presetName))" -ForegroundColor Yellow; continue
+        Write-Host "  $(T Exists @($presetName))" -ForegroundColor Yellow; Out-Result $file $presetName 'Exists'; continue
     }
 
     # Bygg preset-objektet från källfilen / build the preset from the source file
@@ -238,7 +245,7 @@ foreach ($file in $Files) {
     if ($filled) { Write-Host "  $(T Filled @($type, ($filled -join ', ')))" -ForegroundColor DarkGray }
     foreach ($n in $notes) { Write-Host "  $(T Note) $n" -ForegroundColor Yellow }
 
-    if ($DryRun) { Write-Host "  $(T DryRun)" -ForegroundColor DarkGray; continue }
+    if ($DryRun) { Write-Host "  $(T DryRun)" -ForegroundColor DarkGray; Out-Result $file $presetName 'DryRun'; continue }
 
     if (Test-Path $outJson) {
         $bak = Join-Path (Split-Path $targetDir) ("_backup_import_" + (Get-Date -Format 'yyyyMMdd_HHmm'))
@@ -250,6 +257,7 @@ foreach ($file in $Files) {
     Write-Utf8 $outJson $json
     Write-Utf8 $outInfo $info
     Write-Host "  $(T Written @($outJson))" -ForegroundColor Green
+    Out-Result $file $presetName 'Written'
     $results += $presetName
 }
 
