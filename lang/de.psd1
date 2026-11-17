@@ -51,7 +51,7 @@
         StDone       = 'fertig'
         StExists     = 'vorhanden'
         StSkipped    = 'übersprungen'
-        StudioRuns   = "Bambu Studio läuft.`n`nBeenden Sie es vollständig (auch im Infobereich der Taskleiste) und klicken Sie erneut auf Importieren."
+        StudioRuns   = "Bambu Studio läuft.`n`nBeenden Sie es vollständig (auch im Infobereich der Taskleiste) und klicken Sie erneut auf ‚In Bambu Studio importieren‘."
         Importing    = '----- Importiere {0} Datei(en) -----'
         Failed       = 'FEHLER: {0}'
         Created      = '{0} Profil(e) erstellt. Starten Sie Bambu Studio, dann werden sie hochgeladen und erscheinen in der AMS-Filamentliste.'
