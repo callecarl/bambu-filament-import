@@ -14,6 +14,14 @@ $studioExe    = @("$env:ProgramFiles\Bambu Studio\bambu-studio.exe", "${env:Prog
 
 # --- Språk / Language ----------------------------------------------------------------------
 # Texterna ligger i lang/<kod>.psd1 / the texts live in lang/<code>.psd1
+# Utan laddaren eller en.psd1 finns inga texter: visa den saknade sökvägen / without the loader or en.psd1 there are no texts: show the missing path
+foreach ($need in @('bambu_filament_lang.ps1', (Join-Path 'lang' 'en.psd1'))) {
+    $needPath = Join-Path $scriptDir $need
+    if (-not (Test-Path $needPath)) {
+        [System.Windows.Forms.MessageBox]::Show($needPath, 'bambu_filament_gui.ps1', 'OK', 'Error') | Out-Null
+        exit 1
+    }
+}
 . (Join-Path $scriptDir 'bambu_filament_lang.ps1')
 $settingsDir  = Join-Path $env:APPDATA 'BambuFilamentImport'
 $langFile     = Join-Path $settingsDir 'lang.txt'
@@ -22,9 +30,6 @@ if (Test-Path $langFile) { $Lang = (Get-Content $langFile -Raw).Trim() }
 $Lang = Resolve-Language $Lang
 $languages = Get-Languages
 $langCodes = @($languages.Keys)
-
-# Klar-texten på alla språk, så att den byts när språket byts / the Ready text in every language, so it follows a language switch
-$readyTexts = @(foreach ($c in $langCodes) { Use-Language $c 'Gui'; T Ready })
 Use-Language $Lang 'Gui'
 
 if (-not (Test-Path $importScript)) {
@@ -154,8 +159,10 @@ function Apply-Language {
     $btnImport.Text    = T BtnImport
     $btnStudio.Text    = T BtnStudio
     foreach ($item in $list.Items) { $item.SubItems[3].Text = (T $statusText[$item.Tag.Status]) }
-    if ($log.Text.Trim() -eq '' -or @($readyTexts | ForEach-Object { $_ + "`r`n" }) -contains $log.Text) { $log.Text = (T Ready) + "`r`n" }
+    if (-not $script:logUsed) { $log.Text = (T Ready) + "`r`n" }
 }
+# Tills något loggas visar loggen bara Klar-texten, på valt språk / until something is logged, the log shows only the Ready text, in the chosen language
+$logUsed = $false
 Apply-Language
 
 $cmbLang.Add_SelectedIndexChanged({
@@ -167,7 +174,7 @@ $cmbLang.Add_SelectedIndexChanged({
 })
 
 # --- Logik / Logic ---------------------------------------------------------------------------
-function Write-Log([string] $s) { $log.AppendText(($s -replace "`n", "`r`n") + "`r`n") }
+function Write-Log([string] $s) { $script:logUsed = $true; $log.AppendText(($s -replace "`n", "`r`n") + "`r`n") }
 
 function Add-Files([string[]] $paths) {
     foreach ($p in $paths) {
