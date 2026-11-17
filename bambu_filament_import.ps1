@@ -18,7 +18,7 @@
 .USAGE
   Dra en eller flera JSON-filer på "Importera filament till Bambu.bat", eller:
     powershell -File bambu_filament_import.ps1 "fil1.json" "fil2.json"
-        [-Printer "Bambu Lab P1S 0.4 nozzle"] [-Lang sv|en] [-Force] [-DryRun]
+        [-Printer "Bambu Lab P1S 0.4 nozzle"] [-Lang <kod/code>] [-Force] [-DryRun]
 
   Bambu Studio MÅSTE vara stängt när scriptet körs (annars skriver Studio över filerna).
   / Bambu Studio MUST be closed while the script runs.
@@ -28,62 +28,28 @@ param(
     [Parameter(Position = 0, ValueFromRemainingArguments = $true)]
     [string[]] $Files,
     [Parameter()] [string] $Printer = 'Bambu Lab P1S 0.4 nozzle',
-    [Parameter()] [ValidateSet('sv', 'en')] [string] $Lang,   # tomt = följ Windows-språket / empty = follow Windows language
+    [Parameter()] [string] $Lang,      # ett språk i lang/, tomt = följ Windows-språket / a language in lang/, empty = follow Windows language
     [Parameter()] [switch] $Force,      # skriv över befintligt preset med samma namn / overwrite existing preset
     [Parameter()] [switch] $DryRun,     # visa bara vad som skulle hända / show what would happen, write nothing
-    [Parameter()] [string] $OutDir      # (för test) skriv hit i stället för till Studio-mappen / (testing) write here instead
+    [Parameter()] [string] $OutDir,     # (för test) skriv hit i stället för till Studio-mappen / (testing) write here instead
+    [Parameter()] [switch] $PassThru    # returnera ett resultatobjekt per fil / return one result object per file
 )
 
 $ErrorActionPreference = 'Stop'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
 # --- Språk / Language ----------------------------------------------------------------------
-if (-not $Lang) { $Lang = if ((Get-Culture).TwoLetterISOLanguageName -eq 'sv') { 'sv' } else { 'en' } }
-$Strings = @{
-    sv = @{
-        NoFiles       = 'Inga filer angivna. Dra JSON-filer på .bat-filen eller ange sökvägar som argument.'
-        StudioRunning = 'Bambu Studio körs. Stäng det helt (även i systemfältet) och kör igen.'
-        UserDirs      = 'Hittade {0} inloggade användarmappar under {1} – förväntade exakt en (är du inloggad i Studio?).'
-        SkipNoVendor  = 'HOPPAR ÖVER: saknar filament_vendor/filament_type'
-        SkipIdUsed    = "HOPPAR ÖVER: filament_id {0} används redan av '{1}'"
-        Exists        = "FINNS REDAN: '{0}' (använd -Force för att skriva över)"
-        DiffValues    = '{0}: olika värden ({1} / {2}) – tog första'
-        NoGeneric     = 'hittade ingen Generic {0}-profil – saknade fält får Studios standardvärden'
-        Name          = 'namn:       '
-        Id            = 'filament_id:'
-        TempBed       = 'temp/bädd/flöde:'
-        Added         = '{0} saknade fält tillagda från Generic {1}'
-        Filled        = 'fyllda från Generic {0}: {1}'
-        Note          = 'obs:'
-        DryRun        = '(dry run – inget skrivet)'
-        Backup        = 'befintligt preset säkerhetskopierat till {0}'
-        Written       = 'SKRIVET -> {0}'
-        Done          = "{0} preset skapade. Starta Bambu Studio: de laddas upp till molnet och syns sedan i AMS-listan under '{1}'."
-        Nothing       = 'Inget skrevs.'
-    }
-    en = @{
-        NoFiles       = 'No files given. Drop JSON files on the .bat file or pass paths as arguments.'
-        StudioRunning = 'Bambu Studio is running. Close it completely (also in the system tray) and run again.'
-        UserDirs      = 'Found {0} user folders under {1} – expected exactly one (are you logged in to Studio?).'
-        SkipNoVendor  = 'SKIPPED: missing filament_vendor/filament_type'
-        SkipIdUsed    = "SKIPPED: filament_id {0} is already used by '{1}'"
-        Exists        = "ALREADY EXISTS: '{0}' (use -Force to overwrite)"
-        DiffValues    = '{0}: differing values ({1} / {2}) – took the first'
-        NoGeneric     = 'no Generic {0} profile found – missing fields get Studio defaults'
-        Name          = 'name:       '
-        Id            = 'filament_id:'
-        TempBed       = 'temp/bed/flow:'
-        Added         = '{0} missing fields added from Generic {1}'
-        Filled        = 'filled from Generic {0}: {1}'
-        Note          = 'note:'
-        DryRun        = '(dry run – nothing written)'
-        Backup        = 'existing preset backed up to {0}'
-        Written       = 'WRITTEN -> {0}'
-        Done          = "{0} preset(s) created. Start Bambu Studio: they are uploaded to the cloud and then appear in the AMS list under '{1}'."
-        Nothing       = 'Nothing written.'
-    }
+# Texterna ligger i lang/<kod>.psd1 / the texts live in lang/<code>.psd1
+. (Join-Path $PSScriptRoot 'bambu_filament_lang.ps1')
+$requested = "$Lang".Trim()
+$Lang = Resolve-Language $requested
+if ($requested -and $Lang -ne $requested.ToLowerInvariant()) {
+    # Okänt språk: avbryt innan något läses eller skrivs / unknown language: stop before anything is read or written
+    Use-Language 'en' 'Cli'
+    Write-Host (T UnknownLang @($requested, (@((Get-Languages).Keys | Sort-Object) -join ', '))) -ForegroundColor Red
+    exit 1
 }
-function T([string] $key, [object[]] $fmt = @()) { $s = $Strings[$Lang][$key]; if ($fmt.Count) { $s -f $fmt } else { $s } }
+Use-Language $Lang 'Cli'
 
 function Get-Md5Hex([string] $s) {
     $md5 = [System.Security.Cryptography.MD5]::Create()
@@ -178,16 +144,23 @@ foreach ($e in $existing) {
     try { $j = Read-Json $e.FullName; $nm = ($j.name -split ' @')[0]; if ($j.filament_id) { $existingIds[$j.filament_id] = $nm } } catch {}
 }
 
+# Språkoberoende resultat per fil (File, Preset, Result), bara med -PassThru
+# / language-independent result per file (File, Preset, Result), only with -PassThru
+function Out-Result([string] $file, $preset, [string] $result) {
+    if ($PassThru) { [pscustomobject]@{ File = $file; Preset = $preset; Result = $result } }
+}
+
 # --- Bearbeta varje fil / Process each file ---------------------------------------------------
 $results = @()
 foreach ($file in $Files) {
+    $given = $file   # sökvägen som angavs, för -PassThru / the path as given, for -PassThru
     $file = (Resolve-Path $file).Path
     Write-Host "`n=== $(Split-Path $file -Leaf)" -ForegroundColor Cyan
     $src = Read-Json $file
 
     $vendor = (@($src.filament_vendor) | Select-Object -First 1)
     $type   = (@($src.filament_type)   | Select-Object -First 1)
-    if (-not $vendor -or -not $type) { Write-Host "  $(T SkipNoVendor)" -ForegroundColor Red; continue }
+    if (-not $vendor -or -not $type) { Write-Host "  $(T SkipNoVendor)" -ForegroundColor Red; Out-Result $given $null 'Skipped'; continue }
 
     # Serienamn = namnet minus tillverkare och typ i början ("addnorth PETG Base" -> "Base")
     # / Serial = name minus leading vendor and type
@@ -203,13 +176,13 @@ foreach ($file in $Files) {
     $filamentId   = 'P' + (Get-Md5Hex "$filamentName@$userId").Substring(0, 7)
 
     if ($existingIds.ContainsKey($filamentId) -and $existingIds[$filamentId] -ne $filamentName) {
-        Write-Host "  $(T SkipIdUsed @($filamentId, $existingIds[$filamentId]))" -ForegroundColor Red; continue
+        Write-Host "  $(T SkipIdUsed @($filamentId, $existingIds[$filamentId]))" -ForegroundColor Red; Out-Result $given $presetName 'Skipped'; continue
     }
 
     $outJson = Join-Path $targetDir "$presetName.json"
     $outInfo = Join-Path $targetDir "$presetName.info"
     if ((Test-Path $outJson) -and -not $Force) {
-        Write-Host "  $(T Exists @($presetName))" -ForegroundColor Yellow; continue
+        Write-Host "  $(T Exists @($presetName))" -ForegroundColor Yellow; Out-Result $given $presetName 'Exists'; continue
     }
 
     # Bygg preset-objektet från källfilen / build the preset from the source file
@@ -271,7 +244,7 @@ foreach ($file in $Files) {
     if ($filled) { Write-Host "  $(T Filled @($type, ($filled -join ', ')))" -ForegroundColor DarkGray }
     foreach ($n in $notes) { Write-Host "  $(T Note) $n" -ForegroundColor Yellow }
 
-    if ($DryRun) { Write-Host "  $(T DryRun)" -ForegroundColor DarkGray; continue }
+    if ($DryRun) { Write-Host "  $(T DryRun)" -ForegroundColor DarkGray; Out-Result $given $presetName 'DryRun'; continue }
 
     if (Test-Path $outJson) {
         $bak = Join-Path (Split-Path $targetDir) ("_backup_import_" + (Get-Date -Format 'yyyyMMdd_HHmm'))
@@ -283,6 +256,7 @@ foreach ($file in $Files) {
     Write-Utf8 $outJson $json
     Write-Utf8 $outInfo $info
     Write-Host "  $(T Written @($outJson))" -ForegroundColor Green
+    Out-Result $given $presetName 'Written'
     $results += $presetName
 }
 

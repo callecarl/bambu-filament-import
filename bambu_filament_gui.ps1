@@ -13,75 +13,24 @@ $printer      = 'Bambu Lab P1S 0.4 nozzle'
 $studioExe    = @("$env:ProgramFiles\Bambu Studio\bambu-studio.exe", "${env:ProgramFiles(x86)}\Bambu Studio\bambu-studio.exe") | Where-Object { Test-Path $_ } | Select-Object -First 1
 
 # --- Språk / Language ----------------------------------------------------------------------
+# Texterna ligger i lang/<kod>.psd1 / the texts live in lang/<code>.psd1
+# Utan laddaren eller en.psd1 finns inga texter: visa den saknade sökvägen / without the loader or en.psd1 there are no texts: show the missing path
+foreach ($need in @('bambu_filament_lang.ps1', (Join-Path 'lang' 'en.psd1'))) {
+    $needPath = Join-Path $scriptDir $need
+    if (-not (Test-Path $needPath)) {
+        [System.Windows.Forms.MessageBox]::Show($needPath, 'bambu_filament_gui.ps1', 'OK', 'Error') | Out-Null
+        exit 1
+    }
+}
+. (Join-Path $scriptDir 'bambu_filament_lang.ps1')
 $settingsDir  = Join-Path $env:APPDATA 'BambuFilamentImport'
 $langFile     = Join-Path $settingsDir 'lang.txt'
 $Lang = $null
 if (Test-Path $langFile) { $Lang = (Get-Content $langFile -Raw).Trim() }
-if ($Lang -notin 'sv', 'en') { $Lang = if ((Get-Culture).TwoLetterISOLanguageName -eq 'sv') { 'sv' } else { 'en' } }
-
-$Strings = @{
-    sv = @{
-        Title        = 'Bambu filamentimport'
-        Top          = "Dra filament-JSON hit (t.ex. från Addnorth) eller använd knappen. Skrivare: $printer"
-        ColFile      = 'Fil'
-        ColPreset    = 'Blir preset'
-        ColTemp      = 'Temp / bädd'
-        ColStatus    = 'Status'
-        DropHint     = 'Släpp filer här'
-        BtnAdd       = 'Lägg till filer…'
-        BtnClear     = 'Rensa listan'
-        ChkForce     = 'Skriv över presets som redan finns'
-        BtnImport    = 'Importera till Bambu Studio'
-        BtnStudio    = 'Starta Bambu Studio'
-        Language     = 'Språk:'
-        Ready        = 'Klar. Bambu Studio måste vara stängt när du importerar.'
-        NoScript     = "Hittar inte bambu_filament_import.ps1 i`n{0}"
-        NotProfile   = 'saknar tillverkare/typ – inte en filamentprofil'
-        Unreadable   = 'kan inte läsas: {0}'
-        StWaiting    = 'väntar'
-        StError      = 'fel'
-        StDone       = 'klar'
-        StExists     = 'finns'
-        StSkipped    = 'hoppad'
-        StudioRuns   = "Bambu Studio körs.`n`nStäng det helt (även i systemfältet) och tryck Importera igen."
-        Importing    = '----- Importerar {0} fil(er) -----'
-        Failed       = 'FEL: {0}'
-        Created      = '{0} preset skapade. Starta Bambu Studio så laddas de upp och syns i AMS-listan.'
-        DlgTitle     = 'Välj filamentprofiler'
-        DlgFilter    = 'Filamentprofil (*.json)|*.json'
-    }
-    en = @{
-        Title        = 'Bambu filament import'
-        Top          = "Drop filament JSON files here (e.g. from addnorth) or use the button. Printer: $printer"
-        ColFile      = 'File'
-        ColPreset    = 'Becomes preset'
-        ColTemp      = 'Temp / bed'
-        ColStatus    = 'Status'
-        DropHint     = 'Drop files here'
-        BtnAdd       = 'Add files…'
-        BtnClear     = 'Clear list'
-        ChkForce     = 'Overwrite presets that already exist'
-        BtnImport    = 'Import to Bambu Studio'
-        BtnStudio    = 'Start Bambu Studio'
-        Language     = 'Language:'
-        Ready        = 'Ready. Bambu Studio must be closed while importing.'
-        NoScript     = "Cannot find bambu_filament_import.ps1 in`n{0}"
-        NotProfile   = 'missing vendor/type – not a filament profile'
-        Unreadable   = 'cannot be read: {0}'
-        StWaiting    = 'waiting'
-        StError      = 'error'
-        StDone       = 'done'
-        StExists     = 'exists'
-        StSkipped    = 'skipped'
-        StudioRuns   = "Bambu Studio is running.`n`nClose it completely (also in the system tray) and press Import again."
-        Importing    = '----- Importing {0} file(s) -----'
-        Failed       = 'ERROR: {0}'
-        Created      = '{0} preset(s) created. Start Bambu Studio and they are uploaded and appear in the AMS list.'
-        DlgTitle     = 'Select filament profiles'
-        DlgFilter    = 'Filament profile (*.json)|*.json'
-    }
-}
-function T([string] $key, [object[]] $fmt = @()) { $s = $Strings[$Lang][$key]; if ($fmt.Count) { $s -f $fmt } else { $s } }
+$Lang = Resolve-Language $Lang
+$languages = Get-Languages
+$langCodes = @($languages.Keys)
+Use-Language $Lang 'Gui'
 
 if (-not (Test-Path $importScript)) {
     [System.Windows.Forms.MessageBox]::Show((T NoScript @($scriptDir)), (T Title), 'OK', 'Error') | Out-Null
@@ -125,8 +74,8 @@ $lblLang.Anchor = 'Top, Right'
 
 $cmbLang = New-Object System.Windows.Forms.ComboBox
 $cmbLang.DropDownStyle = 'DropDownList'
-[void]$cmbLang.Items.AddRange(@('Svenska', 'English'))
-$cmbLang.SelectedIndex = $(if ($Lang -eq 'sv') { 0 } else { 1 })
+[void]$cmbLang.Items.AddRange([object[]] @($languages.Values))
+$cmbLang.SelectedIndex = [array]::IndexOf($langCodes, $Lang)
 $cmbLang.Location = New-Object System.Drawing.Point(632, 10)
 $cmbLang.Size = New-Object System.Drawing.Size(100, 24)
 $cmbLang.Anchor = 'Top, Right'
@@ -197,7 +146,7 @@ function Set-Status($item, [string] $status) { $item.Tag = @{ Path = $item.Tag.P
 
 function Apply-Language {
     $form.Text         = T Title
-    $lblTop.Text       = T Top
+    $lblTop.Text       = T Top @($printer)
     $lblLang.Text      = T Language
     $list.Columns[0].Text = T ColFile
     $list.Columns[1].Text = T ColPreset
@@ -210,18 +159,22 @@ function Apply-Language {
     $btnImport.Text    = T BtnImport
     $btnStudio.Text    = T BtnStudio
     foreach ($item in $list.Items) { $item.SubItems[3].Text = (T $statusText[$item.Tag.Status]) }
-    if ($log.Text.Trim() -eq '' -or $log.Text -eq ($Strings.sv.Ready + "`r`n") -or $log.Text -eq ($Strings.en.Ready + "`r`n")) { $log.Text = (T Ready) + "`r`n" }
+    if (-not $script:logUsed) { $log.Text = (T Ready) + "`r`n" }
 }
+# Tills något loggas visar loggen bara Klar-texten, på valt språk / until something is logged, the log shows only the Ready text, in the chosen language
+$logUsed = $false
 Apply-Language
 
 $cmbLang.Add_SelectedIndexChanged({
-    $script:Lang = if ($cmbLang.SelectedIndex -eq 0) { 'sv' } else { 'en' }
+    if ($cmbLang.SelectedIndex -lt 0) { return }
+    $script:Lang = $langCodes[$cmbLang.SelectedIndex]
     try { New-Item -ItemType Directory -Force $settingsDir | Out-Null; Set-Content $langFile $script:Lang -NoNewline } catch {}
+    Use-Language $script:Lang 'Gui'
     Apply-Language
 })
 
 # --- Logik / Logic ---------------------------------------------------------------------------
-function Write-Log([string] $s) { $log.AppendText(($s -replace "`n", "`r`n") + "`r`n") }
+function Write-Log([string] $s) { $script:logUsed = $true; $log.AppendText(($s -replace "`n", "`r`n") + "`r`n") }
 
 function Add-Files([string[]] $paths) {
     foreach ($p in $paths) {
@@ -274,23 +227,33 @@ $btnImport.Add_Click({
     [System.Windows.Forms.Application]::DoEvents()
 
     $created = 0
+    # Utdata samlas medan scriptet körs, så att det som hann hända finns kvar vid ett fel
+    # / output is collected while the script runs, so what already happened is kept on an error
+    $output = New-Object System.Collections.ArrayList
+    $failed = $null
     try {
-        $args = @{ Files = $files; Lang = $Lang }
+        $args = @{ Files = $files; Lang = $Lang; PassThru = $true }
         if ($chkForce.Checked) { $args.Force = $true }
-        $output = & $importScript @args -Printer $printer *>&1 | Out-String
-        Write-Log $output.TrimEnd()
-        foreach ($item in $list.Items) {
-            $name = [IO.Path]::GetFileName($item.Tag.Path)
-            $block = ($output -split '=== ') | Where-Object { $_.StartsWith($name) } | Select-Object -First 1
-            if (-not $block) { continue }
-            # Markörerna finns på båda språken / markers exist in both languages
-            if     ($block -match 'SKRIVET|WRITTEN')             { Set-Status $item 'done';    $item.ForeColor = [System.Drawing.Color]::ForestGreen; $created++ }
-            elseif ($block -match 'FINNS REDAN|ALREADY EXISTS')  { Set-Status $item 'exists';  $item.ForeColor = [System.Drawing.Color]::DarkOrange }
-            elseif ($block -match 'HOPPAR ÖVER|SKIPPED')         { Set-Status $item 'skipped'; $item.ForeColor = [System.Drawing.Color]::Firebrick }
-        }
+        & $importScript @args -Printer $printer *>&1 | ForEach-Object { [void]$output.Add($_) }
     } catch {
-        Write-Log (T Failed @($_.Exception.Message))
+        $failed = $_.Exception.Message
     }
+
+    # Resultatobjekt (har Result) styr statusen, resten går till loggen som förut
+    # / result objects (they have Result) set the status, everything else goes to the log as before
+    $results = @($output | Where-Object { $_.PSObject.Properties['Result'] })
+    $text = ($output | Where-Object { -not $_.PSObject.Properties['Result'] } | Out-String).TrimEnd()
+    if ($text) { Write-Log $text }
+    foreach ($r in $results) {
+        $item = $list.Items | Where-Object { $_.Tag.Path -eq $r.File } | Select-Object -First 1
+        if (-not $item) { continue }
+        switch ($r.Result) {
+            'Written' { Set-Status $item 'done';    $item.ForeColor = [System.Drawing.Color]::ForestGreen; $created++ }
+            'Exists'  { Set-Status $item 'exists';  $item.ForeColor = [System.Drawing.Color]::DarkOrange }
+            'Skipped' { Set-Status $item 'skipped'; $item.ForeColor = [System.Drawing.Color]::Firebrick }
+        }
+    }
+    if ($failed) { Write-Log (T Failed @($failed)) }
 
     $form.Cursor = 'Default'
     $btnAdd.Enabled = $true; $btnClear.Enabled = $true
