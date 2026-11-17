@@ -55,8 +55,10 @@ Run `Bambu filament import.bat`. Drag the vendor JSON files (or a whole folder) 
 window, press **Import to Bambu Studio**, then start Studio. The presets appear under
 the vendor's name in the AMS dropdown (e.g. *addnorth → PETG → Base*).
 
-The window is available in **English and Swedish** – pick the language in the top‑right
-corner (it follows your Windows language the first time and remembers your choice).
+The window and the messages are available in every language in the `lang/` folder – today
+**English and Swedish**. Pick the language in the top‑right corner. The first time, the tool
+uses your Windows language when it is available, otherwise English, and then remembers your
+choice.
 
 To get a desktop shortcut, create one pointing to:
 
@@ -79,10 +81,28 @@ Options:
 | Flag | Meaning |
 |------|---------|
 | `-Printer "Bambu Lab X1C 0.4 nozzle"` | Target printer/nozzle. Default: `Bambu Lab P1S 0.4 nozzle`. Use the exact name Studio uses. |
-| `-Lang en` / `-Lang sv` | Language of the messages. Default: follows your Windows language (Swedish → sv, otherwise en). |
+| `-Lang <code>` | Language of the messages: any language in `lang/`, e.g. `en` or `sv`. Default: your Windows language when it is available, otherwise `en`. |
 | `-Force` | Overwrite a preset with the same name (a backup is taken first). |
 | `-DryRun` | Show what would be created without writing anything. |
 | `-OutDir <dir>` | Write to a different folder instead of the Studio user folder (for testing). |
+
+## Adding a language
+
+Each language is one file `lang/<code>.psd1`, where `<code>` is the two‑letter ISO 639‑1
+code (e.g. `de`). Both scripts find the languages from these files, so no code changes
+are needed:
+
+1. Copy `lang/en.psd1` to `lang/<code>.psd1`.
+2. Translate the values, including `LanguageName` (the language's own name, e.g. `Deutsch`).
+   Keep the keys and the `{0}`, `{1}` … placeholders as they are. A missing text is shown
+   in English.
+3. Save the file as UTF‑8 with BOM, so Windows PowerShell 5.1 reads the special characters.
+4. Run the check script, which compares every language file with `lang/en.psd1`:
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File tests\Test-LangFiles.ps1   # Windows
+   pwsh -File tests/Test-LangFiles.ps1                                  # Linux/macOS
+   ```
 
 ## Notes and caveats
 
