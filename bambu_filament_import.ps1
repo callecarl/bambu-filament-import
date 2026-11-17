@@ -41,16 +41,14 @@ $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 # --- Språk / Language ----------------------------------------------------------------------
 # Texterna ligger i lang/<kod>.psd1 / the texts live in lang/<code>.psd1
 . (Join-Path $PSScriptRoot 'bambu_filament_lang.ps1')
-if ($Lang) {
-    $available = @((Get-Languages).Keys | Sort-Object)
-    if ($available -notcontains $Lang.Trim().ToLowerInvariant()) {
-        # Okänt språk: avbryt innan något läses eller skrivs / unknown language: stop before anything is read or written
-        Use-Language 'en' 'Cli'
-        Write-Host (T UnknownLang @($Lang, ($available -join ', '))) -ForegroundColor Red
-        exit 1
-    }
+$requested = "$Lang".Trim()
+$Lang = Resolve-Language $requested
+if ($requested -and $Lang -ne $requested.ToLowerInvariant()) {
+    # Okänt språk: avbryt innan något läses eller skrivs / unknown language: stop before anything is read or written
+    Use-Language 'en' 'Cli'
+    Write-Host (T UnknownLang @($requested, (@((Get-Languages).Keys | Sort-Object) -join ', '))) -ForegroundColor Red
+    exit 1
 }
-$Lang = Resolve-Language $Lang
 Use-Language $Lang 'Cli'
 
 function Get-Md5Hex([string] $s) {
